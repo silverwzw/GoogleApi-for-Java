@@ -1,14 +1,27 @@
 package com.silverwzw.google.api;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.Reader;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.CountDownLatch;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.jsoup.Jsoup;
 
 import com.silverwzw.Debug;
 import com.silverwzw.JSON.JSON;
@@ -22,16 +35,26 @@ import gate.corpora.DocumentImpl;
 import gate.creole.ResourceInstantiationException;
 import gate.util.GateException;
 
-public class GQuery {
+public class Search {
 	private String q;
 	private int i = 10;
-	private String apiKey = "AIzaSyAxdsUVjbxnEV9FAfmK_5M9a2spo-uFL9g";
+	private Map<String,Integer> apiKey;
 	private String seID = "016567116349354999812:g_wwmaarfsa";
 	private boolean sync = false;
+	private boolean useGoogleApi = true;
+	private int ms = 1500;
+	private static Pattern extractQ, extractURL;
 	
-	public GQuery(String queryString) {
+	static {
+		extractQ = Pattern.compile("url\\?q=([^&]*)&");
+		extractURL = Pattern.compile("[\\?&]url=([^&]*)&"); 
+	}
+	
+	public Search(String queryString) {
 		Debug.into(this, "<Constrcutor> : new query:" + queryString);
 		q = queryString;
+		apiKey = new HashMap<String,Integer>();
+		apiKey.put("AIzaSyAxdsUVjbxnEV9FAfmK_5M9a2spo-uFL9g", 100);
 		Debug.out(this, "<Constrcutor>");
 	}
 	
@@ -39,8 +62,20 @@ public class GQuery {
 		sync = isSync;
 	}
 	
-	final public void setApiKey(String key) {
-		apiKey = key;
+	final public void useGoogleApi(boolean d) {
+		useGoogleApi = d;
+	}
+	
+	final public void setXGoogleApiEscapeTime(int timeInMS) {
+		ms = timeInMS;
+	}
+	
+	final public void addApiKeyQuota(String key, int quota) {
+		if (apiKey.containsKey(key) && apiKey.get(key) != null) {
+			apiKey.put(key, apiKey.get(key) + quota);
+		} else {
+			apiKey.put(key,quota);
+		}
 	}
 	
 	final public void setSearchEngineID(String seID) {
@@ -56,11 +91,20 @@ public class GQuery {
 		}
 	}
 	
-	final private String getGQURL(int startIndex) {
+	final private String getGoogleApiURL(int startIndex) {
+		String key = null;
+		int oquota = -99999;
+		for (Entry<String, Integer> en : apiKey.entrySet()) {
+			if (key == null || oquota <= en.getValue() ) {
+				oquota = en.getValue();
+				key = en.getKey();
+			}
+		}
+		apiKey.put(key, oquota - 1);
 		if (startIndex <= 1) {
-			return "https://www.googleapis.com/customsearch/v1?key=" + apiKey + "&cx=" + seID + "&q=" + q + "&num=" + i +"&alt=json";
+			return "https://www.googleapis.com/customsearch/v1?key=" + key + "&cx=" + seID + "&q=" + q + "&num=" + i +"&alt=json";
 		} else {
-			return "https://www.googleapis.com/customsearch/v1?key=" + apiKey + "&cx=" + seID + "&q=" + q + "&num=" + i + "&start=" + startIndex + "&alt=json";
+			return "https://www.googleapis.com/customsearch/v1?key=" + key + "&cx=" + seID + "&q=" + q + "&num=" + i + "&start=" + startIndex + "&alt=json";
 		}
 	}
 	
@@ -71,60 +115,76 @@ public class GQuery {
 			docNum = 20;
 		}
 		
-		JSON[] qpage;
 		int pageNum, cpagei;
-		CountDownLatch threadSignal;
 		List<String> uList;
 		
 		uList = new ArrayList<String>(docNum);
 		pageNum = (docNum%i == 0) ? (docNum / i) : (docNum / i +1);
-		qpage = new JSON[pageNum];
+		
 
 		Debug.println(2, "fetching Google Query Result page");
 		
-		if (!sync) {
-			threadSignal = new CountDownLatch(pageNum);
-			
-			for (cpagei = 0; cpagei < pageNum; cpagei++) {
-				new Thread(new _GetGQPage(threadSignal,getGQURL(cpagei * i + 1), qpage, cpagei)).start();
+		if (useGoogleApi) {
+			JSON[] apiqpage;
+			apiqpage = new JSON[pageNum];
+			CountDownLatch threadSignal;
+			Debug.println(3, "Using API : multi-Thread = " + (sync?"Off":"On"));
+			if (!sync) {
+				threadSignal = new CountDownLatch(pageNum);
+				
+				for (cpagei = 0; cpagei < pageNum; cpagei++) {
+					new Thread(new _GetGQPage(threadSignal,getGoogleApiURL(cpagei * i + 1), apiqpage, cpagei)).start();
+				}
+				try {
+					threadSignal.await();
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				
+				}
+			} else {
+				for (cpagei = 0; cpagei < pageNum; cpagei++) {
+					new _GetGQPage(null, getGoogleApiURL(cpagei * i + 1), apiqpage, cpagei).run();
+				}
 			}
-			try {
-				threadSignal.await();
-			} catch (InterruptedException e) {
-				throw new RuntimeException(e);
-			
+			for (JSON json : apiqpage) {
+				if (json == null || json.get("error") != null) {
+					System.err.println("Query failed : " + ((json == null) ? "json == null" : "json.error != null"));
+					continue;
+				}
+				try {
+					for (Entry<String,JSON> el : json.get("items")) {
+						if (docNum > 0) {
+							String link = (String)el.getValue().get("link").toObject();
+								uList.add(link);
+								docNum --;
+						}
+						if (docNum <= 0) {
+							break;
+						}
+					}
+				} catch (RuntimeException ex) {
+					System.out.print(json.format());
+					throw ex;
+				}
+				if (docNum <= 0) {
+					break;
+				}
 			}
 		} else {
+			Debug.println(3, "Using xGoogle");
 			for (cpagei = 0; cpagei < pageNum; cpagei++) {
-				new _GetGQPage(null, getGQURL(cpagei * i + 1), qpage, cpagei).run();
+				uList.addAll(xGoogleSearch(cpagei * i + 1));
+				try {
+					Thread.sleep(ms);
+					Debug.println(3, "Sleep " + ms);
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				}
 			}
 		}
 		
 		Debug.println(2, "Parsing Google Query Result page");
-		for (JSON json : qpage) {
-			if (json == null || json.get("error") != null) {
-				System.err.println("Query failed : " + ((json == null) ? "json == null" : "json.error != null"));
-				continue;
-			}
-			try {
-				for (Entry<String,JSON> el : json.get("items")) {
-					if (docNum > 0) {
-						String link = (String)el.getValue().get("link").toObject();
-							uList.add(link);
-							docNum --;
-					}
-					if (docNum <= 0) {
-						break;
-					}
-				}
-			} catch (RuntimeException ex) {
-				System.out.print(json.format());
-				throw ex;
-			}
-			if (docNum <= 0) {
-				break;
-			}
-		}
+
 		Debug.out(this, "asUrlStringList");
 		return uList;
 	}
@@ -177,6 +237,68 @@ public class GQuery {
 		}
 		Debug.out(this, "asCorpus");
 		return corpus;
+	}
+	final private Collection<String> xGoogleSearch(int startIndex) {
+		List<String> uList;
+		URLConnection conn;
+		String url;
+		
+		uList = new ArrayList<String>(i);
+		
+		try {
+			conn = new URL("http://www.google.com/search?hl=en&q=" + q + "&num=" + i + "&start=" + startIndex).openConnection();
+			conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.6) Gecko/2009011913 Firefox/3.0.6");
+			conn.connect();
+			for (org.jsoup.nodes.Element el : Jsoup.parse(conn.getInputStream(), "UTF-8", "http://www.google.com/").select("li.g > h3.r > a")) {
+				Matcher m = extractURL.matcher(el.attr("data-cthref"));
+				url = null;
+				if (m.find()) {
+					Debug.println(3, "Q  :" + m.group(1));
+					url = m.group(1);
+				} else {
+					m = extractQ.matcher(el.attr("href"));
+
+					if(m.find()) {
+						Debug.println(3, "URL:" + URLDecoder.decode(m.group(1), "UTF-8"));
+						url = m.group(1);
+					}
+				}
+				if (url != null) {
+					uList.add(url);
+				}
+			}
+		} catch (MalformedURLException e) {
+			throw new RuntimeException(e);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		return uList;
+	}
+	
+	static public void main(String[] args) {
+		URLConnection conn;
+		try {
+			conn = new URL("http://www.google.com/search?hl=en&q=amy&num=25&start=51").openConnection();
+			conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.6) Gecko/2009011913 Firefox/3.0.6");
+			conn.connect();
+			for (org.jsoup.nodes.Element el : Jsoup.parse(conn.getInputStream(), "UTF-8", "http://www.google.com/").select("li.g > h3.r > a")) {
+				Matcher m = extractURL.matcher(el.attr("data-cthref"));
+				if (m.find()) {
+					System.out.println("Q  :" + m.group(1));
+				} else {
+					m = extractQ.matcher(el.attr("href"));
+
+					if(m.find()) {
+						System.out.println("URL:" + URLDecoder.decode(m.group(1), "UTF-8"));
+					}
+				}
+			}
+		} catch (MalformedURLException e) {
+			throw new RuntimeException(e);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		
 	}
 }
 
