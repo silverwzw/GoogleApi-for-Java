@@ -9,6 +9,10 @@ import java.util.List;
 public abstract class AbstractSearch implements Search {
 	protected String q;
 	public void setSearchTerm(String searchTerm) {
+		if (searchTerm == null) {
+			q = null;
+			return;
+		}
 		try {
 			q = java.net.URLEncoder.encode(searchTerm, "UTF-8");
 		} catch (UnsupportedEncodingException e) {

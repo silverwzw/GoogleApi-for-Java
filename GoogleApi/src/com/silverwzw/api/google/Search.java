@@ -38,7 +38,7 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 	private boolean useGoogleApi = true;
 	private int ms = 1500;
 	private static Pattern extractQ, extractURL;
-	private String time;
+	private String time = null;
 	
 	static {
 		extractQ = Pattern.compile("url\\?q=([^&]*)&");
