@@ -1,11 +1,6 @@
-package com.silverwzw.google.api;
+package com.silverwzw.api.google;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.io.Reader;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -35,8 +30,7 @@ import gate.corpora.DocumentImpl;
 import gate.creole.ResourceInstantiationException;
 import gate.util.GateException;
 
-public class Search {
-	private String q;
+public class Search extends com.silverwzw.api.AbstractSearch{
 	private int i = 10;
 	private Map<String,Integer> apiKey;
 	private String seID = "016567116349354999812:g_wwmaarfsa";
@@ -44,15 +38,25 @@ public class Search {
 	private boolean useGoogleApi = true;
 	private int ms = 1500;
 	private static Pattern extractQ, extractURL;
+	private String time;
 	
 	static {
 		extractQ = Pattern.compile("url\\?q=([^&]*)&");
 		extractURL = Pattern.compile("[\\?&]url=([^&]*)&"); 
 	}
 	
+	public Search(String queryString, String time) {
+		constructor(queryString, time);
+	}
+	
 	public Search(String queryString) {
+		constructor(queryString, null);
+	}
+	
+	private void constructor(String queryString, String time) {
 		Debug.into(this, "<Constrcutor> : new query:" + queryString);
-		q = queryString;
+		this.time = time;
+		setSearchTerm(queryString);
 		apiKey = new HashMap<String,Integer>();
 		apiKey.put("AIzaSyAxdsUVjbxnEV9FAfmK_5M9a2spo-uFL9g", 100);
 		Debug.out(this, "<Constrcutor>");
@@ -68,6 +72,10 @@ public class Search {
 	
 	final public void setXGoogleApiEscapeTime(int timeInMS) {
 		ms = timeInMS;
+	}
+	
+	final public void setSearchTerm(String queryString) {
+		q = queryString;
 	}
 	
 	final public void addApiKeyQuota(String key, int quota) {
@@ -188,65 +196,19 @@ public class Search {
 		Debug.out(this, "asUrlStringList");
 		return uList;
 	}
-	final public List<URL> asUrlList(int docNum) {
-		List<URL> ul = new LinkedList<URL>();
-		for (String u : asUrlStringList(docNum)) {
-			try{
-				ul.add(new URL(u));
-			} catch (MalformedURLException e) {
-				System.err.println("Cannot recognize the link returned by Google Query:" + u);
-			}
-		}
-		return ul;
-	}
-	final public Corpus asCorpus(int docNum, String CorpusName) {
-		Debug.into(this, "asCorpus");
-		if (!Gate.isInitialised()) {
-			System.err.println("GQuery.asCoprus: Gate not initialised! trying to initialize gate with default value.");
-			try {
-				Gate.init();
-			} catch (GateException e) {
-				throw new RuntimeException(e);
-			}
-		}
-		
-		List<URL> uList;
-		uList = asUrlList(docNum);
-		CountDownLatch threadSignal;
-		Corpus corpus;
-		Debug.println(2, "Buildiung Corpus");
-		try {
-			corpus =  Factory.newCorpus(CorpusName);
-		} catch (ResourceInstantiationException ex) {
-			throw new RuntimeException(ex); 
-		}
-		if (!sync) {
-			threadSignal = new CountDownLatch(uList.size());
-			for (URL u : uList) {
-				new Thread(new _GetGateDoc(threadSignal,u,corpus)).start();
-			}
-			try {
-				threadSignal.await();
-			} catch (InterruptedException e) {
-				throw new RuntimeException(e);
-			}
-		} else {
-			for (URL u : uList) {
-				new _GetGateDoc(null, u,corpus).run();
-			}
-		}
-		Debug.out(this, "asCorpus");
-		return corpus;
-	}
+
+
 	final private Collection<String> xGoogleSearch(int startIndex) {
 		List<String> uList;
 		URLConnection conn;
 		String url;
-		
+		String tq;
 		uList = new ArrayList<String>(i);
 		
+		tq = (time == null) ? "" : ("&tbs=qdr:" + time);
+		
 		try {
-			conn = new URL("http://www.google.com/search?hl=en&q=" + q + "&num=" + i + "&start=" + startIndex).openConnection();
+			conn = new URL("http://www.google.com/search?hl=en&q=" + q + tq + "&num=" + i + "&start=" + startIndex).openConnection();
 			conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.6) Gecko/2009011913 Firefox/3.0.6");
 			conn.connect();
 			for (org.jsoup.nodes.Element el : Jsoup.parse(conn.getInputStream(), "UTF-8", "http://www.google.com/").select("li.g > h3.r > a")) {
@@ -329,38 +291,6 @@ class _GetGQPage implements Runnable {
 				System.err.println("IO Exception while Query Google on url:" + q);
 			} catch (JsonStringFormatException e) {
 				System.err.println("JSON format exception while Query Google on url:" + q);
-			}
-		} finally {
-			if (countDownSig != null) {
-				countDownSig.countDown();
-			}
-		}
-	}
-}
-
-class _GetGateDoc implements Runnable {
-	URL u;
-	CountDownLatch countDownSig;
-	Corpus corpus;
-	_GetGateDoc(CountDownLatch countDownSig, URL u, Corpus corpus) {
-		this.u = u;
-		this.countDownSig = countDownSig; 
-		this.corpus = corpus;
-	}
-	public void run() {
-		try {
-			Debug.println(3, "Thread " + Thread.currentThread().getId() + ": change local url to gate.Document : " + u);
-			Document doc = new DocumentImpl();
-			doc.setSourceUrl(u);
-			try {
-				doc.init();
-			} catch (ResourceInstantiationException e) {
-				System.err.println("Error while change url to gate.Document! url=" + u);
-				doc = null;
-			}
-			Debug.println(3, "Thread " + Thread.currentThread().getId() + ": add document " + u + "to Corpus: " + corpus.getName());
-			synchronized(corpus) {
-				corpus.add(doc);
 			}
 		} finally {
 			if (countDownSig != null) {
