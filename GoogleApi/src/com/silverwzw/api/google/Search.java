@@ -8,7 +8,6 @@ import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -18,17 +17,8 @@ import java.util.regex.Pattern;
 
 import org.jsoup.Jsoup;
 
-import com.silverwzw.Debug;
 import com.silverwzw.JSON.JSON;
 import com.silverwzw.JSON.JSON.JsonStringFormatException;
-
-import gate.Corpus;
-import gate.Document;
-import gate.Factory;
-import gate.Gate;
-import gate.corpora.DocumentImpl;
-import gate.creole.ResourceInstantiationException;
-import gate.util.GateException;
 
 public class Search extends com.silverwzw.api.AbstractSearch{
 	private int i = 10;
@@ -54,12 +44,10 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 	}
 	
 	private void constructor(String queryString, String time) {
-		Debug.into(this, "<Constrcutor> : new query:" + queryString);
 		this.time = time;
 		setSearchTerm(queryString);
 		apiKey = new HashMap<String,Integer>();
 		apiKey.put("AIzaSyAxdsUVjbxnEV9FAfmK_5M9a2spo-uFL9g", 100);
-		Debug.out(this, "<Constrcutor>");
 	}
 	
 	final public void setSync(boolean isSync) {
@@ -117,7 +105,6 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 	}
 	
 	final public List<String> asUrlStringList(int docNum) {
-		Debug.into(this, "asUrlStringList");
 		if (docNum < 1) {
 			System.err.println("Number of Documents should greater than 1, use 20 instead");
 			docNum = 20;
@@ -130,13 +117,11 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 		pageNum = (docNum%i == 0) ? (docNum / i) : (docNum / i +1);
 		
 
-		Debug.println(2, "fetching Google Query Result page");
 		
 		if (useGoogleApi) {
 			JSON[] apiqpage;
 			apiqpage = new JSON[pageNum];
 			CountDownLatch threadSignal;
-			Debug.println(3, "Using API : multi-Thread = " + (sync?"Off":"On"));
 			if (!sync) {
 				threadSignal = new CountDownLatch(pageNum);
 				
@@ -179,21 +164,16 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 				}
 			}
 		} else {
-			Debug.println(3, "Using xGoogle");
 			for (cpagei = 0; cpagei < pageNum; cpagei++) {
 				uList.addAll(xGoogleSearch(cpagei * i + 1));
 				try {
 					Thread.sleep(ms);
-					Debug.println(3, "Sleep " + ms);
 				} catch (InterruptedException e) {
 					throw new RuntimeException(e);
 				}
 			}
 		}
 		
-		Debug.println(2, "Parsing Google Query Result page");
-
-		Debug.out(this, "asUrlStringList");
 		return uList;
 	}
 
@@ -215,13 +195,11 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 				Matcher m = extractURL.matcher(el.attr("data-cthref"));
 				url = null;
 				if (m.find()) {
-					Debug.println(3, "Q  :" + m.group(1));
 					url = m.group(1);
 				} else {
 					m = extractQ.matcher(el.attr("href"));
 
 					if(m.find()) {
-						Debug.println(3, "URL:" + URLDecoder.decode(m.group(1), "UTF-8"));
 						url = m.group(1);
 					}
 				}
@@ -277,13 +255,11 @@ class _GetGQPage implements Runnable {
 		q = queryURL;
 	}
 	public void run() {
-		Debug.println(3, "Thread " + Thread.currentThread().getId() + ": query Google on: " + q);
 		try {
 			URLConnection conn = null;
 			pArr[index] = null;
 			try {
 				conn = (new URL(q)).openConnection();
-				Debug.println(3, "Thread " + Thread.currentThread().getId() + ": parsing  Google result page: " + q);
 				pArr[index] = JSON.parse(conn.getInputStream());
 			} catch (MalformedURLException e) {
 				System.err.println("Google Query URL Exception! URL:" + q);
