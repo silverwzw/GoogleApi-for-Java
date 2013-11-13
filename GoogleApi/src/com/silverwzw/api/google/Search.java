@@ -69,7 +69,7 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 		}
 		try {
 			q = java.net.URLEncoder.encode(queryString, "UTF-8").replaceAll(" ", "%20");
-		} catch (UnsupportedEncodingException e) {
+		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 	}
