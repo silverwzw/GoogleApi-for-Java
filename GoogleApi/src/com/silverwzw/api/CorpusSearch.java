@@ -12,7 +12,6 @@ import java.net.URL;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
-import com.silverwzw.Debug;
 
 public class CorpusSearch extends AbstractSearch {
 	private Search se;
@@ -30,7 +29,6 @@ public class CorpusSearch extends AbstractSearch {
 		sync = syncValue;
 	}
 	final public Corpus asCorpus(int docNum, String CorpusName) {
-		Debug.into(this, "asCorpus");
 		if (!Gate.isInitialised()) {
 			System.err.println("GQuery.asCoprus: Gate not initialised! trying to initialize gate with default value.");
 			try {
@@ -44,7 +42,6 @@ public class CorpusSearch extends AbstractSearch {
 		uList = asUrlList(docNum);
 		CountDownLatch threadSignal;
 		Corpus corpus;
-		Debug.println(2, "Buildiung Corpus");
 		try {
 			corpus =  Factory.newCorpus(CorpusName);
 		} catch (ResourceInstantiationException ex) {
@@ -65,7 +62,6 @@ public class CorpusSearch extends AbstractSearch {
 				new _GetGateDoc(null, u,corpus).run();
 			}
 		}
-		Debug.out(this, "asCorpus");
 		return corpus;
 	}
 }
@@ -82,7 +78,6 @@ class _GetGateDoc implements Runnable {
 	}
 	public void run() {
 		try {
-			Debug.println(3, "Thread " + Thread.currentThread().getId() + ": change local url to gate.Document : " + u);
 			Document doc = new DocumentImpl();
 			doc.setSourceUrl(u);
 			try {
@@ -91,7 +86,6 @@ class _GetGateDoc implements Runnable {
 				System.err.println("Error while change url to gate.Document! url=" + u);
 				doc = null;
 			}
-			Debug.println(3, "Thread " + Thread.currentThread().getId() + ": add document " + u + "to Corpus: " + corpus.getName());
 			synchronized(corpus) {
 				corpus.add(doc);
 			}
