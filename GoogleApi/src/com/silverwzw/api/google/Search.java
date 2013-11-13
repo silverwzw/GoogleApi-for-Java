@@ -1,6 +1,7 @@
 package com.silverwzw.api.google;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -8,7 +9,6 @@ import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -22,13 +22,6 @@ import com.silverwzw.Debug;
 import com.silverwzw.JSON.JSON;
 import com.silverwzw.JSON.JSON.JsonStringFormatException;
 
-import gate.Corpus;
-import gate.Document;
-import gate.Factory;
-import gate.Gate;
-import gate.corpora.DocumentImpl;
-import gate.creole.ResourceInstantiationException;
-import gate.util.GateException;
 
 public class Search extends com.silverwzw.api.AbstractSearch{
 	private int i = 10;
@@ -75,7 +68,15 @@ public class Search extends com.silverwzw.api.AbstractSearch{
 	}
 	
 	final public void setSearchTerm(String queryString) {
-		q = queryString;
+		if (queryString == null) {
+			q = null;
+			return;
+		}
+		try {
+			q = java.net.URLEncoder.encode(queryString, "UTF-8").replaceAll(" ", "%20");
+		} catch (UnsupportedEncodingException e) {
+			throw new RuntimeException(e);
+		}
 	}
 	
 	final public void addApiKeyQuota(String key, int quota) {
